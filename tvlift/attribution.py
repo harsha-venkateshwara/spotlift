@@ -15,21 +15,21 @@ def naive_attribution(df: pd.DataFrame) -> pd.DataFrame:
     return {k: v/total for k, v in attribution.items()}
 
 def ols_attribution(df: pd.DataFrame):
-    """OLS regression- revenue ~ spend channels + seasonality. Shows correlation but not causiation"""
-
-    features = ["tv_S", "facebook_S", "search_S","ooh_S","tv_rolling4","tv_sov","week_of_year","month"]
-
-    x = df[features].fillna(0)
+    feature_cols = [
+        "tv_S", "facebook_S", "search_S", "ooh_S",
+        "tv_rolling4", "tv_sov", "week_of_year", "month"
+    ]
+    X = df[feature_cols].fillna(0)
     y = df["revenue"]
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    model = LinearRegression().fit(X_Scaled, y)
+    model = LinearRegression().fit(X_scaled, y)
     preds = model.predict(X_scaled)
     r2 = r2_score(y, preds)
 
-    coefs = dict(zip(features, model.coef_))
+    coefs = dict(zip(feature_cols, model.coef_))
     return model, coefs, r2, scaler
 
 def compute_incremental_roas(df: pd.DataFrame, coefs: dict) -> dict:
