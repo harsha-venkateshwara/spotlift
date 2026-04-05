@@ -1,3 +1,131 @@
+# TVLift — Convergent TV Attribution Engine
+
+> A production-grade Media Mix Model that measures the true incremental 
+> impact of TV advertising using geo-lift methodology, Bayesian uncertainty 
+> quantification, and budget optimization.
+> 
+> Built to mirror how ad tech companies like Tatari approach convergent 
+> TV measurement.
+
+![TVLift Dashboard](assets/overview.png)
+
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://tvlift.streamlit.app)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+## The Problem
+
+You can't click a TV ad.
+
+When someone watches a commercial on Monday night and visits your website 
+on Tuesday, that visit looks identical to organic traffic. Traditional 
+attribution just gives TV credit proportional to its spend share — which 
+is correlation at best, and completely useless for causal inference.
+
+TVLift solves this with the same methodology production ad tech teams use:
+geo-lift experiments, adstock modeling, Bayesian uncertainty quantification,
+and saturation-aware budget optimization.
+
+---
+
+## Live Demo
+
+🔗 **[tvlift.streamlit.app](https://tvlift.streamlit.app)**
+
+The app has 8 interactive pages. Each one tells one piece of the same story:
+Measure, Model and Optimize
+
+---
+
+## What's Inside
+
+### Page 1 — Overview
+Executive summary dashboard. Five KPIs at a glance: total TV spend, 
+total revenue, geo-lift confidence interval, incremental ROAS, and 
+fitted adstock decay rate. Includes indexed spend chart and raw vs 
+adstock-transformed TV spend comparison.
+
+### Page 2 — Adstock & Saturation
+Two non-linear TV effects that most attribution models ignore:
+
+- **Geometric adstock**: TV effects decay over weeks, not instantly. 
+  An airing this week still drives conversions next week and the week 
+  after. The decay rate θ is fitted from data — not assumed.
+- **Hill saturation**: Doubling TV spend doesn't double revenue. 
+  Diminishing returns are real and modeled explicitly via the Hill 
+  function. Both α (shape) and γ (half-saturation point) are fitted 
+  from data.
+
+Includes fitted parameter table, spend → response curves per channel, 
+and adstock decay visualization over 12 weeks.
+
+### Page 3 — Attribution
+Shows exactly why naive attribution fails — then shows the causal 
+alternative.
+
+- **Naive**: Proportional to spend. TV gets credit just for being 
+  expensive. Completely ignores causation.
+- **OLS regression**: Better, but still correlational. TV spend 
+  correlates with Q4 holiday seasons — OLS can't separate the two.
+- **SHAP feature importance**: XGBoost + SHAP shows that 
+  adstock-transformed features outrank raw spend, confirming the 
+  model learned that carryover matters.
+
+### Page 4 — Geo-Lift
+The causal core of the project. Mirrors Tatari's core measurement 
+methodology.
+
+**How it works:**
+1. Split DMAs (Designated Market Areas) into treatment and holdout groups
+2. Treatment DMAs keep running TV ads as normal
+3. Holdout DMAs have TV ads paused for the experiment duration
+4. Measure the revenue gap between groups
+5. That gap — statistically tested — is TV's true incremental impact
+
+**Bootstrap CI**: 1,000 iterations of DMA resampling to produce a 
+95% confidence interval on the lift estimate. A point estimate without 
+uncertainty is just a guess.
+
+Includes treatment vs holdout time series, bootstrap distribution 
+histogram, and a "what would tighten this estimate" section connecting 
+directly to the experiment design page.
+
+### Page 5 — Experiment Design
+Pre-experiment power analysis. You design the experiment before you 
+run it — not after.
+
+Interactive sliders for:
+- **Target lift to detect** (%)
+- **False positive rate** (α)
+- **Statistical power** (1-β)
+
+Outputs:
+- Minimum total DMAs needed
+- MDE vs DMA count curve
+- Green shading showing the feasible detection region
+
+This page answers: "If I only expect a 10% TV lift, how many holdout 
+DMAs do I actually need?"
+
+### Page 6 — Bayesian MMM
+Production-grade uncertainty quantification using PyMC.
+
+Instead of a point estimate ("TV ROAS = 1.8x"), the Bayesian model 
+gives you a full posterior distribution ("TV ROAS = 1.8x, 94% HDI: 
+1.1x – 2.7x").
+
+**Model structure:**
+revenue ~ Normal(mu, sigma)
+mu = intercept
+
+beta_tv * hill(adstock(tv_spend))
+beta_facebook * facebook_norm
+beta_search * search_norm
+beta_ooh * ooh_norm
+seasonality
+
 **Outputs:**
 - Posterior ROAS bars with 94% HDI error bars per channel
 - Violin plots of full posterior distributions
@@ -44,7 +172,6 @@ it knows the 1,000th dollar of TV spend is worth less than the first.
 ---
 
 ## Architecture
-
 tvlift/
 ├── adstock.py          # Geometric adstock + Hill saturation
 │                       # fit_adstock_params, build_response_curve
@@ -188,50 +315,8 @@ validation.
 | Worst slot | Late night weekday (0.4x ROAS) |
 | Budget optimization uplift | 3–8% vs equal split |
 
----
 
-## Interview Questions This Project Answers
-
-If you're using this project for interviews, here are the questions 
-you'll get and the answers:
-
-**Q: How do you estimate baseline without a control group?**
-A: The geo-lift design creates the control group — holdout DMAs 
-serve as the counterfactual. The bootstrap CI quantifies how 
-sensitive the estimate is to the specific DMA assignment.
-
-**Q: Why is attribution hard for TV specifically?**
-A: Three reasons. First, no click-through tracking — TV impressions 
-can't be tied to individual user actions. Second, adstock — effects 
-persist across multiple weeks making causal attribution temporally 
-ambiguous. Third, confounding — TV spend is correlated with 
-seasonality, making OLS estimates unreliable.
-
-**Q: What assumptions does your geo-lift model make?**
-A: SUTVA (Stable Unit Treatment Value Assumption) — that DMAs don't 
-influence each other. Parallel trends — that treatment and holdout 
-DMAs would have followed similar revenue trajectories without the 
-experiment. Random DMA assignment — that holdout DMAs aren't 
-systematically different from treatment DMAs.
-
-**Q: How would you improve this with real data?**
-A: With ACR (Automatic Content Recognition) data — actual household-level 
-TV viewing records — you could move from DMA-level to household-level 
-attribution. You could also incorporate search query volume as a 
-leading indicator of TV response, and use hierarchical Bayesian models 
-to share information across DMAs.
-
-**Q: Why grid search instead of convex optimization?**
-A: The response surface is non-convex due to the Hill saturation 
-transformation — standard convex solvers don't guarantee a global 
-optimum. Grid search over allocation fractions is slower but 
-guaranteed to find the global optimum within the grid resolution. 
-In production you'd use Bayesian optimization for higher-dimensional 
-budget problems.
-
----
-
-## What I'd Add With More Time
+## What I'd Add to this in future
 
 - **ACR data integration**: Real household-level TV viewing data 
   from companies like Samba TV or iSpot would replace the simulated 
@@ -249,12 +334,18 @@ budget problems.
 
 ## About
 
-Built by **Harsha Venkateshwara** as a portfolio project
+Built by **Harsha Venkateshwara** as a portfolio project.
 
 MS Computer Science @ University at Buffalo (graduating December 2026)
-Specialization: Artificial Intelligence and Machine Learning
+Specialization: Machine Learning and Causal Inference
 
+---
 
+## License
+
+MIT License — use freely, attribution appreciated.
+
+---
 
 ## Acknowledgments
 
