@@ -337,7 +337,7 @@ validation.
 Built by **Harsha Venkateshwara** as a portfolio project.
 
 MS Computer Science @ University at Buffalo (graduating December 2026)
-Specialization: Machine Learning and Causal Inference
+Specialization: Artificial Intelligence and Machine Learning
 
 ---
 
