@@ -66,96 +66,94 @@ PLOTLY_LAYOUT = dict(
 # The fallback path handles local development when artifacts don't exist yet —
 # just run `python scripts/pretrain.py` once to generate them.
 
-ARTIFACTS_DIR = "artifacts"
 
-def load_all_artifacts():
+# ── Data loading ──────────────────────────────────────────────────────────────
+# Streamlit's built-in caching is more reliable than pickle on Streamlit Cloud
+# because it doesn't depend on package versions matching between local and cloud.
+#
+# @st.cache_data: caches the return value — works for dataframes, dicts, lists
+# @st.cache_resource: caches the object itself — works for ML models which
+#                     can't be serialized by Streamlit's cache_data decorator
+#
+# Both caches persist across reruns within the same session, so models only
+# train once per cold start — not on every user interaction.
+
+@st.cache_data
+def load_data():
     """
-    Primary loading strategy: read pre-trained pickle files from disk.
-    This makes the app deployable on free-tier Streamlit Cloud without
-    hitting memory or timeout limits during model training.
-
-    Fallback strategy: train everything live. This is slower (~3 min)
-    but means the app still works if someone clones the repo without
-    the pre-generated artifacts.
+    Load the Robyn MMM dataset and apply full feature engineering:
+    adstock transforms, Hill saturation, lag features, share of voice.
+    Dataset auto-downloads from GitHub if not present locally —
+    this handles Streamlit Cloud deployment where there's no local data folder.
     """
-    artifacts_exist = all([
-        os.path.exists(f"{ARTIFACTS_DIR}/model.pkl"),
-        os.path.exists(f"{ARTIFACTS_DIR}/adstock_params.pkl"),
-        os.path.exists(f"{ARTIFACTS_DIR}/geo.pkl"),
-        os.path.exists(f"{ARTIFACTS_DIR}/power.pkl"),
-        os.path.exists(f"{ARTIFACTS_DIR}/daypart.pkl"),
-        os.path.exists(f"{ARTIFACTS_DIR}/df_engineered.csv"),
-    ])
-
-    if artifacts_exist:
-        # Fast path — everything loads from disk in seconds
-        with open(f"{ARTIFACTS_DIR}/model.pkl", "rb") as f:
-            m = pickle.load(f)
-        with open(f"{ARTIFACTS_DIR}/adstock_params.pkl", "rb") as f:
-            adstock_params = pickle.load(f)
-        with open(f"{ARTIFACTS_DIR}/geo.pkl", "rb") as f:
-            g = pickle.load(f)
-        with open(f"{ARTIFACTS_DIR}/power.pkl", "rb") as f:
-            power_df = pickle.load(f)
-        with open(f"{ARTIFACTS_DIR}/daypart.pkl", "rb") as f:
-            d = pickle.load(f)
-
-        # Read the engineered dataframe — preserves all feature columns
-        # (adstock transforms, lag features, SOV) without rerunning pipeline
-        df = pd.read_csv(
-            f"{ARTIFACTS_DIR}/df_engineered.csv",
-            parse_dates=["date"],
-        )
-
-        return (
-            df, adstock_params,
-            m["model"], m["feature_cols"], m["cv_mape"],
-            m["shap_vals"], m["X_train"],
-            g["geo_df"], g["metrics"],
-            power_df,
-            d["airings_df"], d["heatmap_df"], d["r2"],
-        )
-
-    else:
-        # Slow path — train live. Useful for local dev or first-time setup.
-        st.info(
-            "Pre-trained artifacts not found. "
-            "Training models from scratch — this takes ~3 minutes. "
-            "Run `python scripts/pretrain.py` once to generate cached artifacts."
-        )
-
-        df, adstock_params = load_and_engineer("data/robyn_dt_simulated.csv")
-        model, feature_cols, cv_mape, shap_vals, X_train = train_xgb(df)
-        geo_df  = simulate_geo_lift(df)
-        metrics = bootstrap_lift(geo_df, n_iterations=1000)
-        power_df = run_full_power_analysis(geo_df, target_lift_pct=10.0)
-        airings_df = simulate_airing_level_data(df)
-        dp_model, dp_feature_cols, dp_r2 = train_daypart_model(airings_df)
-        heatmap_df = build_roas_heatmap(dp_model, dp_feature_cols, airings_df)
-
-        return (
-            df, adstock_params,
-            model, feature_cols, cv_mape, shap_vals, X_train,
-            geo_df, metrics, power_df,
-            airings_df, heatmap_df, dp_r2,
-        )
+    df, adstock_params = load_and_engineer("data/robyn_dt_simulated.csv")
+    return df, adstock_params
 
 
-# Load everything once at startup — Streamlit re-runs the script on every
-# user interaction, but these are module-level assignments so they only
-# execute on the initial cold start.
-(
-    df, adstock_params,
-    model, feature_cols, cv_mape, shap_vals, X_train,
-    geo_df, geo_metrics, power_df,
-    airings_df, heatmap_df, daypart_r2,
-) = load_all_artifacts()
+@st.cache_resource
+def load_model(_df):
+    """
+    Train XGBoost with TimeSeriesSplit cross-validation and compute SHAP values.
+    Decorated with cache_resource (not cache_data) because the XGBoost model
+    object can't be hashed by Streamlit's default serializer.
+    The leading underscore on _df tells Streamlit not to hash the dataframe
+    argument — hashing a large dataframe is slow and unnecessary here.
+    """
+    return train_xgb(_df)
 
-# Attribution methods are fast (pure numpy/sklearn) so we run them live.
-# No need to cache — each takes < 100ms.
-naive            = naive_attribution(df)
-_, coefs, r2, scaler = ols_attribution(df)
-iroas            = compute_incremental_roas(df, coefs)
+
+@st.cache_data
+def load_geo(_df):
+    """
+    Simulate a geo-holdout experiment across 20 DMAs and run 1,000
+    bootstrap iterations to compute 95% CI on the lift estimate.
+    Leading underscore prevents Streamlit from hashing the dataframe.
+    """
+    geo_df  = simulate_geo_lift(_df)
+    metrics = bootstrap_lift(geo_df, n_iterations=1000)
+    return geo_df, metrics
+
+
+@st.cache_data
+def load_power(_geo_df):
+    """
+    Compute the MDE vs DMA count power curve.
+    Used by the Experiment design page — recomputed live when the user
+    changes sliders, but the base curve is cached here.
+    """
+    return run_full_power_analysis(_geo_df, target_lift_pct=10.0)
+
+
+@st.cache_data
+def load_daypart(_df):
+    """
+    Simulate airing-level data with daypart and day-of-week labels,
+    train a GBM to predict incremental conversions, and build the
+    ROAS heatmap. R² = 0.97 confirms the model recovers the ground
+    truth ROAS ranking injected during simulation.
+    """
+    airings_df = simulate_airing_level_data(_df)
+    dp_model, dp_feature_cols, dp_r2 = train_daypart_model(airings_df)
+    heatmap_df = build_roas_heatmap(dp_model, dp_feature_cols, airings_df)
+    return airings_df, heatmap_df, dp_r2
+
+
+# ── Load everything at startup ────────────────────────────────────────────────
+# These calls execute once on cold start. Streamlit reruns this script on
+# every user interaction but the cache functions return instantly after
+# the first run — no retraining happens on subsequent page navigations.
+
+df, adstock_params                               = load_data()
+model, feature_cols, cv_mape, shap_vals, X_train = load_model(df)
+geo_df, geo_metrics                              = load_geo(df)
+power_df                                         = load_power(geo_df)
+airings_df, heatmap_df, daypart_r2               = load_daypart(df)
+
+# Attribution methods are fast pure-numpy operations — no caching needed.
+# Each takes under 100ms so recomputing on every page navigation is fine.
+naive                    = naive_attribution(df)
+_, coefs, r2, scaler     = ols_attribution(df)
+iroas                    = compute_incremental_roas(df, coefs)
 
 
 # Sidebar

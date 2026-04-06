@@ -6,8 +6,24 @@ from tvlift.adstock import (
     geometric_adstock,
 )
 
+import os
+import requests
+
+def _ensure_data(path: str):
+    """Download dataset if not present — handles Streamlit Cloud deployment."""
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        url = (
+            "https://raw.githubusercontent.com/facebookexperimental/"
+            "Robyn/main/robyn_package/data-raw/dt_simulated_weekly.csv"
+        )
+        r = requests.get(url, timeout=30)
+        with open(path, "wb") as f:
+            f.write(r.content)
 
 def load_and_engineer(path: str) -> tuple:
+    _ensure_data(path)
+
     """
     Load Robyn MMM dataset and apply full feature engineering:
       1. Basic lag and rolling features
