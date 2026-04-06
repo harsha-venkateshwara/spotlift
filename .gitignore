@@ -1,0 +1,10 @@
+# Keeping artifacts
+!artifacts/
+!artifacts/*.pkl
+!artifacts/*.csv
+
+#Excluding the below files
+__pycache__/
+*.pyc
+.env
+.streamlit/secrets.toml
