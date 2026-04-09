@@ -11,10 +11,8 @@ def optimize_budget(
 ) -> dict:
     """
     Budget optimizer that works correctly across any budget level.
-
     Core insight: XGBoost was trained on normalized/transformed features.
     We must feed it inputs in the same scale it saw during training.
-
     Strategy:
       - Compute the historical spend distribution per channel
       - Express the new budget as a MULTIPLIER on historical means
@@ -44,8 +42,7 @@ def optimize_budget(
     def build_feature_row(tv_share: float, fb_share: float, sr_share: float) -> np.ndarray:
         """
         Build a model-ready feature vector for a given allocation.
-
-        We scale each channel's features by the ratio of:
+        We thenscale each channel's features by the ratio of:
             (new spend) / (historical mean spend)
 
         This preserves relative magnitudes the model learned during training.
@@ -97,7 +94,7 @@ def optimize_budget(
 
         return np.array([[row.get(f, 0) for f in feature_cols]])
 
-    # ── Grid search over allocation fractions ────────────────────────────────
+    #  Grid search over allocation fractions
     best_rev   = -np.inf
     best_alloc = None
     results    = []
@@ -131,12 +128,12 @@ def optimize_budget(
                 best_rev   = pred_rev
                 best_alloc = alloc.copy()
 
-    # ── Equal-split baseline ─────────────────────────────────────────────────
+    # Equal-split baseline 
     eq_share  = 1 / 3
     X_equal   = build_feature_row(eq_share, eq_share, eq_share)
     equal_rev = float(model.predict(X_equal)[0])
 
-    # ── Uplift relative to equal split ───────────────────────────────────────
+    # Uplift relative to equal split
     uplift_pct = (best_rev - equal_rev) / (abs(equal_rev) + 1e-9) * 100
 
     return {

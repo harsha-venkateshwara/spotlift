@@ -8,11 +8,10 @@ from sklearn.metrics import mean_absolute_percentage_error
 
 def build_features(df: pd.DataFrame) -> tuple:
     """
-    Use adstock-transformed and Hill-saturated features instead of raw spend.
+    Using adstock-transformed and Hill-saturated features instead of raw spend.
     This is the critical upgrade — the model now sees diminishing returns
     baked into the input features rather than assuming linearity.
     """
-    # Prefer transformed features if available
     transformed_available = [
         c for c in df.columns if c.endswith("_transformed")
     ]
@@ -38,12 +37,10 @@ def build_features(df: pd.DataFrame) -> tuple:
 def train_xgb(df: pd.DataFrame) -> tuple:
     """
     Train XGBoost with time-series cross-validation.
-
     Critical: never use random CV splits on time series.
     Always split chronologically — future data cannot inform past predictions.
     """
     X, y, feature_cols = build_features(df)
-
     tscv = TimeSeriesSplit(n_splits=5)
     mapes = []
 

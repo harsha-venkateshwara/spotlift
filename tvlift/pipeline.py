@@ -44,7 +44,7 @@ def load_and_engineer(path: str) -> tuple:
     df["sin_week"]     = np.sin(2 * np.pi * df["week_of_year"] / 52)
     df["cos_week"]     = np.cos(2 * np.pi * df["week_of_year"] / 52)
 
-    # ── Fit adstock parameters from data ─────────────────────────────────
+    # Fit adstock parameters from data
     adstock_params = {}
     channels = {
         "tv_S":       "tv",
@@ -67,20 +67,19 @@ def load_and_engineer(path: str) -> tuple:
                 df, params, raw_col=col, out_col=f"{col}_transformed"
             )
 
-    # ── Lag features on raw spend ─────────────────────────────────────────
+    # Lag features on raw spend
     for col in ["tv_S", "facebook_S", "search_S"]:
         if col in df.columns:
             df[f"{col}_lag1"] = df[col].shift(1)
             df[f"{col}_lag2"] = df[col].shift(2)
 
-    # ── Rolling spend (captures sustained campaigns) ──────────────────────
+    # Rolling spend (captures sustained campaigns)
     df["tv_rolling4"] = df["tv_S"].rolling(4).mean()
     df["fb_rolling4"] = df["facebook_S"].rolling(4).mean()
 
-    # ── Share of voice ────────────────────────────────────────────────────
+    #Share of voice
     total_spend = df[["tv_S", "facebook_S", "search_S", "ooh_S"]].sum(axis=1)
     df["tv_sov"] = df["tv_S"] / (total_spend + 1e-9)
 
     df = df.dropna().reset_index(drop=True)
-
     return df, adstock_params

@@ -63,7 +63,7 @@ def build_bayesian_mmm(
 
     with pm.Model() as mmm:
 
-        # ── Channel betas (contribution to revenue) ──────────────────────
+        #  Channel betas (contribution to revenue)
         # Half-normal prior: we believe channels contribute positively
         # but don't want to assume how much
         beta_tv       = pm.HalfNormal("beta_tv",       sigma=1.0)
@@ -71,7 +71,7 @@ def build_bayesian_mmm(
         beta_search   = pm.HalfNormal("beta_search",    sigma=1.0)
         beta_ooh      = pm.HalfNormal("beta_ooh",       sigma=0.5)
 
-        # ── Hill saturation params per channel ───────────────────────────
+        # Hill saturation params per channel 
         # alpha: shape. Prior centered on 1 (concave) — most spend-response
         # relationships are concave or mildly S-shaped, not strongly S-shaped
         alpha_tv = pm.Beta("alpha_tv", alpha=2, beta=2)  # ~ 0.5, bounded 0-1
@@ -83,30 +83,30 @@ def build_bayesian_mmm(
             sigma=float(np.percentile(spend_arrays["tv_S"][spend_arrays["tv_S"] > 0], 50))
         )
 
-        # ── Seasonality ──────────────────────────────────────────────────
+        #Seasonality
         beta_sin = pm.Normal("beta_sin", mu=0, sigma=0.5)
         beta_cos = pm.Normal("beta_cos", mu=0, sigma=0.5)
 
-        # ── Baseline intercept ───────────────────────────────────────────
+        #Baseline intercept
         intercept = pm.Normal("intercept", mu=0, sigma=1.0)
 
-        # ── Noise ────────────────────────────────────────────────────────
+        #Noise
         sigma = pm.HalfNormal("sigma", sigma=0.5)
 
-        # ── Apply Hill saturation to adstocked TV spend ──────────────────
+        # Applying Hill saturation to adstocked TV spend 
         tv_adstocked = pt.as_tensor_variable(spend_arrays["tv_S"])
         tv_transformed = tv_adstocked ** alpha_tv / (
             tv_adstocked ** alpha_tv + gamma_tv ** alpha_tv + 1e-9
         )
 
-        # ── Normalize other channels simply (no Hill for speed) ───────────
+        # Normalize other channels simply (no Hill for speed)
         fb_norm  = pt.as_tensor_variable(spend_arrays["facebook_S"] / (spend_arrays["facebook_S"].max() + 1e-9))
         sr_norm  = pt.as_tensor_variable(spend_arrays["search_S"]   / (spend_arrays["search_S"].max()   + 1e-9))
         ooh_norm = pt.as_tensor_variable(spend_arrays["ooh_S"]       / (spend_arrays["ooh_S"].max()       + 1e-9))
         sin_t    = pt.as_tensor_variable(sin_w)
         cos_t    = pt.as_tensor_variable(cos_w)
 
-        # ── Expected revenue (scaled) ────────────────────────────────────
+        # Expected revenue (scaled)
         mu = (
             intercept
             + beta_tv       * tv_transformed
@@ -117,10 +117,10 @@ def build_bayesian_mmm(
             + beta_cos      * cos_t
         )
 
-        # ── Likelihood ───────────────────────────────────────────────────
+        # Likelihood
         obs = pm.Normal("obs", mu=mu, sigma=sigma, observed=rev_scaled)
 
-        # ── Sample ───────────────────────────────────────────────────────
+        # Sample
         trace = pm.sample(**sample_kwargs)
 
     return mmm, trace, rev_mean, rev_std, spend_arrays

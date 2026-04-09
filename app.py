@@ -67,7 +67,7 @@ PLOTLY_LAYOUT = dict(
 # just run `python scripts/pretrain.py` once to generate them.
 
 
-# ── Data loading ──────────────────────────────────────────────────────────────
+#  Data loading
 # Streamlit's built-in caching is more reliable than pickle on Streamlit Cloud
 # because it doesn't depend on package versions matching between local and cloud.
 #
@@ -138,7 +138,7 @@ def load_daypart(_df):
     return airings_df, heatmap_df, dp_r2
 
 
-# ── Load everything at startup ────────────────────────────────────────────────
+#  Load everything at startup
 # These calls execute once on cold start. Streamlit reruns this script on
 # every user interaction but the cache functions return instantly after
 # the first run — no retraining happens on subsequent page navigations.
