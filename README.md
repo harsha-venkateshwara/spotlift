@@ -169,29 +169,6 @@ maximizes predicted incremental revenue.
 The optimizer uses adstock-corrected, saturation-aware features — 
 it knows the 1,000th dollar of TV spend is worth less than the first.
 
----
-
-## Architecture
-tvlift/
-├── adstock.py          # Geometric adstock + Hill saturation
-│                       # fit_adstock_params, build_response_curve
-├── attribution.py      # Naive, OLS, incremental ROAS
-├── bayesian_mmm.py     # PyMC model, posterior extraction,
-│                       # counterfactual computation
-├── daypart.py          # Airing simulation, GBM model,
-│                       # ROAS heatmap builder
-├── geo_lift.py         # DMA simulation, bootstrap CI
-├── model.py            # XGBoost with TimeSeriesSplit CV + SHAP
-├── optimizer.py        # Grid search budget optimizer
-├── pipeline.py         # Data loading, adstock feature engineering
-└── power_analysis.py   # MDE, required DMAs, power curves
-data/
-└── robyn_dt_simulated.csv   # Meta Robyn MMM open-source dataset
-app.py                  # Streamlit dashboard (8 pages)
-requirements.txt        # Dependencies
-
----
-
 ## Technical Stack
 
 | Component | Technology |
